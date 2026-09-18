@@ -100,7 +100,7 @@
     .turn-a{color:var(--ct)}.turn-b{color:var(--t)}
     .sync-row{display:flex;gap:8px;align-items:center}
     footer{text-align:center;color:#64748b;font-size:12px;margin-top:18px}
-    @media(max-width:900px){.grid,.stats-layout{grid-template-columns:1fr}.teams{grid-template-columns:1fr}.result-actions{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}.form-grid{grid-template-columns:1fr}}
+    @media(max-width:900px){.grid,.stats-layout{grid-template-columns:1fr}.teams{grid-template-columns:1fr}.ban-grid{grid-template-columns:repeat(2,1fr)}.result-actions{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}.form-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -114,8 +114,7 @@
   </header>
 
   <nav class="tabs">
-    <button class="tab active" data-view="randomView">分隊 / 抽圖</button>
-    <button class="tab" data-view="banPickView">地圖 Ban / Pick</button>
+    <button class="tab active" data-view="randomView">分隊 / Ban Pick</button>
     <button class="tab" data-view="statsView">戰績紀錄</button>
   </nav>
 
@@ -138,60 +137,25 @@
       </aside>
 
       <section class="card result">
-        <div id="emptyState" class="empty"><div><div style="font-size:40px;margin-bottom:8px">5v5</div><strong style="color:#e2e8f0">等待抽選</strong><div style="margin-top:6px">輸入至少 10 位玩家後開始。</div></div></div>
-        <div id="resultState" hidden>
-          <div class="map-hero">
-            <div><div class="map-label">Selected Map</div><div class="map-name" id="selectedMap">—</div></div>
-            <button class="ghost" id="rerollMapBtn">重抽地圖</button>
-          </div>
+        <div class="leader-head">
+          <div><p class="section-title" style="margin-bottom:4px">BO1 地圖 Ban / Pick</p><div class="hint" style="margin:0">先隨機分隊，再進行：A Ban 2 → B Ban 3 → A Pick 1 → B 選 CT / T。</div></div>
+          <div class="sync-row"><button class="secondary smallbtn" id="banStartBtn">開始 Ban / Pick</button><button class="ghost smallbtn" id="banResetBtn">重置</button></div>
+        </div>
+        <div class="ban-status"><div><div class="map-label">Ban / Pick Status</div><div id="banStatusText" style="font-weight:900;margin-top:4px">請先隨機分隊</div></div><div><code id="banServerCommand">尚未決定地圖</code></div></div>
+        <div class="ban-grid" id="banGrid"></div>
+        <div id="sideChoiceBox" class="ban-status" style="margin-top:14px;display:none"><div><div class="map-label">Team B Side Choice</div><div style="font-weight:900;margin-top:4px">Team B 選擇開局陣營</div></div><div class="sync-row"><button class="secondary smallbtn" id="chooseCtBtn">Team B 選 CT</button><button class="secondary smallbtn" id="chooseTBtn">Team B 選 T</button></div></div>
+        <div class="notice" id="banNotice"></div>
+        <div id="resultState" hidden style="margin-top:18px">
           <div class="teams">
-            <article class="team"><div class="team-head"><div class="team-name">Team A</div><div class="side" id="sideA">CT</div></div><ol class="players" id="teamA"></ol></article>
-            <article class="team"><div class="team-head"><div class="team-name">Team B</div><div class="side" id="sideB">T</div></div><ol class="players" id="teamB"></ol></article>
+            <article class="team"><div class="team-head"><div class="team-name">Team A</div><div class="side" id="sideA">—</div></div><ol class="players" id="teamA"></ol></article>
+            <article class="team"><div class="team-head"><div class="team-name">Team B</div><div class="side" id="sideB">—</div></div><ol class="players" id="teamB"></ol></article>
           </div>
           <div class="subs" id="subsBox" hidden><div class="map-label" style="margin-bottom:8px">Substitutes</div><div class="subs-list" id="subsList"></div></div>
-          <div class="server"><div><div class="map-label">Server Command</div><code id="serverCommand">changelevel de_mirage</code></div><button class="ghost smallbtn" id="copyCommandBtn">複製</button></div>
-          <div class="result-actions">
-            <button class="primary" id="rerollTeamsBtn">重新平均分隊</button>
-            <button class="secondary" id="swapSidesBtn">交換 CT / T</button>
-            <button class="secondary" id="copyDiscordBtn">複製 Discord 格式</button>
-          </div>
+          <div class="server"><div><div class="map-label">Server Command</div><code id="serverCommand">等待 Ban / Pick 完成</code></div><button class="ghost smallbtn" id="copyCommandBtn">複製</button></div>
+          <div class="result-actions"><button class="primary" id="rerollTeamsBtn">重新平均分隊</button><button class="secondary" id="copyDiscordBtn">複製 Discord 格式</button><button class="ghost" id="swapSidesBtn" disabled>陣營由 Team B 選擇</button></div>
           <div class="notice" id="resultNotice"></div>
         </div>
       </section>
-    </div>
-  </section>
-
-  <section id="banPickView" class="view">
-    <div class="card pad">
-      <div class="leader-head">
-        <div>
-          <p class="section-title" style="margin-bottom:4px">BO1 地圖 Ban / Pick</p>
-          <div class="hint" style="margin:0">固定流程：Team A 先 Ban 2 張 → Team B Ban 3 張 → Team A 從剩餘地圖中 Pick 1 張 → Team B 選 CT 或 T。</div>
-        </div>
-        <div class="sync-row">
-          <button class="secondary smallbtn" id="banStartBtn">開始 Ban / Pick</button>
-          <button class="ghost smallbtn" id="banResetBtn">重置</button>
-        </div>
-      </div>
-      <div class="ban-status">
-        <div>
-          <div class="map-label">Ban / Pick Status</div>
-          <div id="banStatusText" style="font-weight:900;margin-top:4px">尚未開始</div>
-        </div>
-        <div><code id="banServerCommand">尚未決定地圖</code></div>
-      </div>
-      <div class="ban-grid" id="banGrid"></div>
-      <div id="sideChoiceBox" class="ban-status" style="margin-top:14px;display:none">
-        <div>
-          <div class="map-label">Team B Side Choice</div>
-          <div style="font-weight:900;margin-top:4px">Team B 選擇開局陣營</div>
-        </div>
-        <div class="sync-row">
-          <button class="secondary smallbtn" id="chooseCtBtn">Team B 選 CT</button>
-          <button class="secondary smallbtn" id="chooseTBtn">Team B 選 T</button>
-        </div>
-      </div>
-      <div class="notice" id="banNotice"></div>
     </div>
   </section>
 
@@ -248,8 +212,8 @@ const SHEET_API_URL="https://script.google.com/macros/s/AKfycbzfzHiscj9oyKwgui_A
 const $=s=>document.querySelector(s);
 const els={
  players:$("#players"),playerCount:$("#playerCount"),mapPool:$("#mapPool"),drawBtn:$("#drawBtn"),clearBtn:$("#clearBtn"),formNotice:$("#formNotice"),
- emptyState:$("#emptyState"),resultState:$("#resultState"),selectedMap:$("#selectedMap"),sideA:$("#sideA"),sideB:$("#sideB"),teamA:$("#teamA"),teamB:$("#teamB"),
- subsBox:$("#subsBox"),subsList:$("#subsList"),serverCommand:$("#serverCommand"),rerollMapBtn:$("#rerollMapBtn"),rerollTeamsBtn:$("#rerollTeamsBtn"),
+ resultState:$("#resultState"),sideA:$("#sideA"),sideB:$("#sideB"),teamA:$("#teamA"),teamB:$("#teamB"),
+ subsBox:$("#subsBox"),subsList:$("#subsList"),serverCommand:$("#serverCommand"),rerollTeamsBtn:$("#rerollTeamsBtn"),
  swapSidesBtn:$("#swapSidesBtn"),copyDiscordBtn:$("#copyDiscordBtn"),copyCommandBtn:$("#copyCommandBtn"),resultNotice:$("#resultNotice"),
  scoreA:$("#scoreA"),scoreB:$("#scoreB"),statsFile:$("#statsFile"),uploadPreview:$("#uploadPreview"),
  templateBtn:$("#templateBtn"),saveMatchBtn:$("#saveMatchBtn"),statsNotice:$("#statsNotice"),leaderBody:$("#leaderBody"),
@@ -258,7 +222,7 @@ const els={
  banStartBtn:$("#banStartBtn"),banResetBtn:$("#banResetBtn"),sideChoiceBox:$("#sideChoiceBox"),
  chooseCtBtn:$("#chooseCtBtn"),chooseTBtn:$("#chooseTBtn")
 };
-let state={activePool:[],teamA:[],teamB:[],subs:[],map:"",sideA:"CT",sideB:"T"};
+let state={activePool:[],teamA:[],teamB:[],subs:[],map:"",sideA:"—",sideB:"—"};
 let banState={maps:[],bannedA:[],bannedB:[],phase:"idle",picked:null,bSide:null,started:false};
 let parsedStats=[];
 
@@ -281,19 +245,21 @@ function updateCount(){els.playerCount.textContent=parsePlayers().length;localSt
 function setSide(el,side){el.textContent=side;el.className="side "+side.toLowerCase()}
 function renderList(el,list){el.innerHTML=list.map((n,i)=>'<li><span class="num">'+(i+1)+'.</span><span>'+esc(n)+'</span></li>').join("")}
 function renderRandom(){
- els.emptyState.hidden=true;els.resultState.hidden=false;els.selectedMap.textContent=state.map;setSide(els.sideA,state.sideA);setSide(els.sideB,state.sideB);
- renderList(els.teamA,state.teamA);renderList(els.teamB,state.teamB);els.serverCommand.textContent="changelevel "+state.map;
+ els.resultState.hidden=false;
+ if(state.sideA==="CT"||state.sideA==="T")setSide(els.sideA,state.sideA);else{els.sideA.textContent="—";els.sideA.className="side"}
+ if(state.sideB==="CT"||state.sideB==="T")setSide(els.sideB,state.sideB);else{els.sideB.textContent="—";els.sideB.className="side"}
+ renderList(els.teamA,state.teamA);renderList(els.teamB,state.teamB);
+ els.serverCommand.textContent=state.map?"changelevel "+state.map:"等待 Ban / Pick 完成";
  els.subsList.innerHTML=state.subs.map(n=>'<span class="chip">'+esc(n)+'</span>').join("");els.subsBox.hidden=!state.subs.length;
 }
 function drawAll(){
  const players=parsePlayers(),maps=selectedMaps();
  if(players.length<10)return notice(els.formNotice,"至少需要 10 位不同玩家。",true);
- if(!maps.length)return notice(els.formNotice,"至少保留 1 張地圖。",true);
- localStorage.setItem("cs2_maps",JSON.stringify(maps));
- const shuffled=shuffle(players);state.activePool=shuffled.slice(0,10);state.teamA=state.activePool.slice(0,5);state.teamB=state.activePool.slice(5,10);state.subs=shuffled.slice(10);state.map=pick(maps);
- if(Math.random()<.5){state.sideA="CT";state.sideB="T"}else{state.sideA="T";state.sideB="CT"} renderRandom()
+ if(maps.length<6)return notice(els.formNotice,"Ban / Pick 至少需要 6 張地圖。",true);
+ const s=shuffle(players);state.activePool=s.slice(0,10);state.teamA=state.activePool.slice(0,5);state.teamB=state.activePool.slice(5,10);state.subs=s.slice(10);state.map="";state.sideA="—";state.sideB="—";
+ resetBanPick();renderRandom();notice(els.formNotice,"分隊完成，請在右側開始 Ban / Pick。");
 }
-function rerollTeams(){if(state.activePool.length!==10)return;const s=shuffle(state.activePool);state.teamA=s.slice(0,5);state.teamB=s.slice(5,10);renderRandom()}
+function rerollTeams(){if(state.activePool.length!==10)return;const s=shuffle(state.activePool);state.teamA=s.slice(0,5);state.teamB=s.slice(5,10);state.map="";state.sideA="—";state.sideB="—";resetBanPick();renderRandom()}
 function rerollMap(){const maps=selectedMaps();if(!maps.length)return notice(els.resultNotice,"至少保留 1 張地圖。",true);const alt=maps.filter(m=>m!==state.map);state.map=pick(alt.length?alt:maps);renderRandom()}
 function swapSides(){[state.sideA,state.sideB]=[state.sideB,state.sideA];renderRandom()}
 function discordText(){const x=["【CS2 內戰】","","地圖："+state.map,"","Team A ("+state.sideA+")",...state.teamA.map((p,i)=>(i+1)+". "+p),"","Team B ("+state.sideB+")",...state.teamB.map((p,i)=>(i+1)+". "+p)];if(state.subs.length)x.push("","候補",...state.subs.map((p,i)=>(i+1)+". "+p));x.push("","Server：","changelevel "+state.map);return x.join("\n")}
@@ -302,10 +268,11 @@ async function copy(text,msg){try{await navigator.clipboard.writeText(text)}catc
 function resetBanPick(){
  const maps=selectedMaps();
  banState={maps:[...maps],bannedA:[],bannedB:[],phase:"idle",picked:null,bSide:null,started:false};
- renderBanPick();
+ state.map="";state.sideA="—";state.sideB="—";renderBanPick();
 }
 function startBanPick(){
  const maps=selectedMaps();
+ if(state.activePool.length!==10){notice(els.banNotice,"請先完成隨機分隊。",true);return}
  if(maps.length<6){notice(els.banNotice,"此流程至少需要 6 張地圖。",true);return}
  banState={maps:[...maps],bannedA:[],bannedB:[],phase:"A_BAN",picked:null,bSide:null,started:true};
  renderBanPick();
@@ -374,7 +341,7 @@ function renderBanPick(){
    els.banStatusText.innerHTML='地圖：<span style="color:var(--accent)">'+esc(banState.picked)+'</span> · Team A '+state.sideA+' / Team B '+state.sideB;
    els.banServerCommand.textContent="changelevel "+banState.picked;
  }else{
-   els.banStatusText.textContent="尚未開始";
+   els.banStatusText.textContent=state.activePool.length===10?"分隊完成，可開始 Ban / Pick":"請先隨機分隊";
    els.banServerCommand.textContent="尚未決定地圖";
  }
 }
@@ -515,9 +482,9 @@ function template(){download("cs2-stats-template.csv","player,team,kills,assists
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("#"+b.dataset.view).classList.add("active")}));
 els.players.addEventListener("input",updateCount);
 els.mapPool.addEventListener("change",()=>{localStorage.setItem("cs2_maps",JSON.stringify(selectedMaps()));resetBanPick()});
-els.drawBtn.addEventListener("click",drawAll);els.rerollTeamsBtn.addEventListener("click",rerollTeams);els.rerollMapBtn.addEventListener("click",rerollMap);els.swapSidesBtn.addEventListener("click",swapSides);
+els.drawBtn.addEventListener("click",drawAll);els.rerollTeamsBtn.addEventListener("click",rerollTeams);
 els.copyDiscordBtn.addEventListener("click",()=>copy(discordText(),"Discord 格式已複製。"));els.copyCommandBtn.addEventListener("click",()=>copy(els.serverCommand.textContent,"Server 指令已複製。"));
-els.clearBtn.addEventListener("click",()=>{els.players.value="";updateCount();els.emptyState.hidden=false;els.resultState.hidden=true;notice(els.formNotice,"名單已清空。")});
+els.clearBtn.addEventListener("click",()=>{els.players.value="";updateCount();state={activePool:[],teamA:[],teamB:[],subs:[],map:"",sideA:"—",sideB:"—"};els.resultState.hidden=true;resetBanPick();notice(els.formNotice,"名單已清空。")});
 els.statsFile.addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{parsedStats=convertStats(parseCSV(await f.text()));previewStats();notice(els.statsNotice,"已讀取 "+parsedStats.length+" 位玩家。")}catch(err){parsedStats=[];previewStats();notice(els.statsNotice,err.message,true)}});
 els.saveMatchBtn.addEventListener("click",saveMatch);els.templateBtn.addEventListener("click",template);els.exportBtn.addEventListener("click",exportBackup);els.importBtn.addEventListener("click",()=>els.backupFile.click());
 els.backupFile.addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{const x=JSON.parse(await f.text());if(!x||Array.isArray(x)||typeof x!=="object")throw new Error();saveTotals(x);renderStats();notice(els.statsNotice,"玩家總戰績備份已匯入。")}catch{notice(els.statsNotice,"備份檔格式不正確。",true)}});
