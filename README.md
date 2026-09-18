@@ -35,3 +35,17 @@
 Repository Settings → Pages → Build and deployment → Deploy from a branch → main / root。
 
 網站主檔案為 `index.html`，不需要建置工具。
+
+
+## 2026-09 功能更新
+
+- 地圖池加入 `de_cache`
+- 新增 BO1 地圖 Ban / Pick：Team A / Team B 輪流 Ban，最後一張自動成為本場地圖
+- Ban / Pick 使用目前勾選中的地圖池
+- 戰績頁新增「同步 Google Sheet」
+- 網站開啟時會嘗試從 Google Apps Script 讀取 Players 總表
+- Google Sheet 為主要資料來源，本機 localStorage 僅作快取
+
+### Google Apps Script 讀取 API
+
+Apps Script 除了原本的 `doPost(e)`，還需要加入 `doGet(e)`，讓網站能讀回 Players 資料。
