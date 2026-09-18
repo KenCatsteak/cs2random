@@ -138,7 +138,7 @@
 
       <section class="card result">
         <div class="leader-head">
-          <div><p class="section-title" style="margin-bottom:4px">BO1 地圖 Ban / Pick</p><div class="hint" style="margin:0">先隨機分隊，再進行：A Ban 2 → B Ban 3 → A Pick 1 → B 選 CT / T。</div></div>
+          <div><p class="section-title" style="margin-bottom:4px">BO1 地圖 Ban / Pick</p><div class="hint" style="margin:0">先隨機分隊，再進行：A Ban 2 → B Ban 3 → 若剩餘超過 1 張則隨機抽 1 張地圖；若只剩 1 張則直接採用 → B 選 CT / T。</div></div>
           <div class="sync-row"><button class="secondary smallbtn" id="banStartBtn">開始 Ban / Pick</button><button class="ghost smallbtn" id="banResetBtn">重置</button></div>
         </div>
         <div class="ban-status"><div><div class="map-label">Ban / Pick Status</div><div id="banStatusText" style="font-weight:900;margin-top:4px">請先隨機分隊</div></div><div><code id="banServerCommand">尚未決定地圖</code></div></div>
@@ -289,11 +289,12 @@ function handleMapAction(map){
    if(banState.bannedA.length>=2)banState.phase="B_BAN";
  }else if(banState.phase==="B_BAN"){
    banState.bannedB.push(map);
-   if(banState.bannedB.length>=3)banState.phase="A_PICK";
- }else if(banState.phase==="A_PICK"){
-   banState.picked=map;
-   banState.phase="SIDE";
-   state.map=map;
+   if(banState.bannedB.length>=3){
+     const remaining=banState.maps.filter(m=>!allBanned().includes(m));
+     banState.picked=remaining.length===1?remaining[0]:pick(remaining);
+     banState.phase="SIDE";
+     state.map=banState.picked;
+   }
  }
  renderBanPick();
  if(banState.picked&&!els.resultState.hidden)renderRandom();
@@ -318,7 +319,7 @@ function renderBanPick(){
    else if(picked)label="PICKED BY A";
    else if(banState.phase==="A_BAN")label="Team A Ban";
    else if(banState.phase==="B_BAN")label="Team B Ban";
-   else if(banState.phase==="A_PICK")label="Team A Pick";
+
    return '<button class="ban-map '+((isA||isB)?"banned ":"")+(picked?"picked":"")+'" data-map="'+esc(m)+'" '+(disabled?"disabled":"")+'><strong>'+esc(m.replace("de_","").toUpperCase())+'</strong><span>'+label+'</span></button>'
  }).join("");
  els.banGrid.querySelectorAll(".ban-map").forEach(b=>b.addEventListener("click",()=>handleMapAction(b.dataset.map)));
@@ -331,11 +332,8 @@ function renderBanPick(){
  }else if(banState.phase==="B_BAN"){
    els.banStatusText.innerHTML='Team B Ban：<span class="turn-b">'+banState.bannedB.length+' / 3</span>';
    els.banServerCommand.textContent="等待地圖選擇";
- }else if(banState.phase==="A_PICK"){
-   els.banStatusText.innerHTML='Team A 從剩餘地圖中 <span style="color:var(--accent)">Pick 1 張</span>';
-   els.banServerCommand.textContent="等待地圖選擇";
  }else if(banState.phase==="SIDE"){
-   els.banStatusText.innerHTML='地圖：<span style="color:var(--accent)">'+esc(banState.picked)+'</span> · 等待 Team B 選 CT / T';
+   els.banStatusText.innerHTML='選定地圖：<span style="color:var(--accent)">'+esc(banState.picked)+'</span> · 等待 Team B 選 CT / T';
    els.banServerCommand.textContent="changelevel "+banState.picked;
  }else if(banState.phase==="DONE"){
    els.banStatusText.innerHTML='地圖：<span style="color:var(--accent)">'+esc(banState.picked)+'</span> · Team A '+state.sideA+' / Team B '+state.sideB;
