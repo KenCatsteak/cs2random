@@ -181,7 +181,7 @@
           <button class="secondary" id="importBtn">匯入備份</button>
         </div>
         <input id="backupFile" type="file" accept=".json,application/json" hidden>
-        <div class="hint">GitHub Pages 沒有資料庫，因此紀錄儲存在目前瀏覽器。建議定期匯出 JSON 備份。</div>
+        <div class="hint">主要戰績會寫入 Google Sheet；瀏覽器仍保留一份本機排行快取，可用 JSON 匯出備份。</div>
       </aside>
 
       <section class="card pad">
@@ -194,11 +194,12 @@
     </div>
   </section>
 
-  <footer>分隊採純隨機平均人數，不使用戰績或實力做平衡。戰績採玩家累積制，預設僅存在你的瀏覽器。</footer>
+  <footer>分隊採純隨機平均人數，不使用戰績或實力做平衡。戰績採玩家累積制，會寫入 Google Sheet；瀏覽器另保留本機快取。</footer>
 </main>
 
 <script>
 const MAPS=["de_mirage","de_inferno","de_dust2","de_nuke","de_ancient","de_anubis","de_train","de_overpass"];
+const SHEET_API_URL="https://script.google.com/macros/s/AKfycbzfzHiscj9oyKwgui_AKQNJ9l_RQBAgBBvsCFDuY3nIsu7uclUAoVXvhpnzy-4wZvGL/exec";
 const $=s=>document.querySelector(s);
 const els={
  players:$("#players"),playerCount:$("#playerCount"),mapPool:$("#mapPool"),drawBtn:$("#drawBtn"),clearBtn:$("#clearBtn"),formNotice:$("#formNotice"),
@@ -306,13 +307,45 @@ function accumulatePlayer(t,p,scoreA,scoreB){
    if(won)x.wins++;else x.losses++;
  }
 }
-function saveMatch(){
+async function saveMatch(){
  if(!parsedStats.length)return;
- const a=num(els.scoreA.value),b=num(els.scoreB.value),t=totals();
- parsedStats.forEach(p=>accumulatePlayer(t,p,a,b));
- saveTotals(t);
- parsedStats=[];els.statsFile.value="";previewStats();renderStats();
- notice(els.statsNotice,"已累加到玩家總戰績。")
+ const a=num(els.scoreA.value),b=num(els.scoreB.value);
+ const payload={scoreA:a,scoreB:b,players:parsedStats};
+
+ els.saveMatchBtn.disabled=true;
+ const originalText=els.saveMatchBtn.textContent;
+ els.saveMatchBtn.textContent="寫入 Google Sheet 中...";
+
+ try{
+   const res=await fetch(SHEET_API_URL,{
+     method:"POST",
+     headers:{"Content-Type":"text/plain;charset=utf-8"},
+     body:JSON.stringify(payload)
+   });
+
+   const text=await res.text();
+   let data={};
+   try{data=JSON.parse(text)}catch{}
+
+   if(!res.ok || data.success===false){
+     throw new Error(data.error||("HTTP "+res.status));
+   }
+
+   const t=totals();
+   parsedStats.forEach(p=>accumulatePlayer(t,p,a,b));
+   saveTotals(t);
+
+   parsedStats=[];
+   els.statsFile.value="";
+   previewStats();
+   renderStats();
+   notice(els.statsNotice,"已寫入 Google Sheet，並同步更新本機排行。");
+ }catch(err){
+   notice(els.statsNotice,"寫入失敗："+err.message,true);
+ }finally{
+   els.saveMatchBtn.textContent=originalText;
+   els.saveMatchBtn.disabled=!parsedStats.length;
+ }
 }
 function renderStats(){
  const a=Object.values(totals()).sort((x,y)=>y.kills-x.kills||((y.kills/(y.deaths||1))-(x.kills/(x.deaths||1))));
