@@ -92,6 +92,13 @@
     .leader-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}
     .leader-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}
     .smallbtn{padding:7px 9px;font-size:11px;border-radius:9px}
+    .ban-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .ban-map{position:relative;min-height:105px;border:1px solid var(--line);background:linear-gradient(135deg,#101a2c,#0a1222);border-radius:14px;padding:14px;text-align:left;color:var(--text)}
+    .ban-map strong{display:block;font-size:18px;margin-bottom:5px}.ban-map span{color:var(--muted);font-size:12px}
+    .ban-map.banned{opacity:.38;text-decoration:line-through;background:#180d12}.ban-map.picked{border-color:var(--accent);box-shadow:0 0 0 2px rgba(245,158,11,.16)}
+    .ban-status{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--line);background:#0a1222;border-radius:14px;padding:14px;margin-bottom:14px}
+    .turn-a{color:var(--ct)}.turn-b{color:var(--t)}
+    .sync-row{display:flex;gap:8px;align-items:center}
     footer{text-align:center;color:#64748b;font-size:12px;margin-top:18px}
     @media(max-width:900px){.grid,.stats-layout{grid-template-columns:1fr}.teams{grid-template-columns:1fr}.result-actions{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}.form-grid{grid-template-columns:1fr}}
   </style>
@@ -108,6 +115,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-view="randomView">分隊 / 抽圖</button>
+    <button class="tab" data-view="banPickView">地圖 Ban / Pick</button>
     <button class="tab" data-view="statsView">戰績紀錄</button>
   </nav>
 
@@ -120,7 +128,7 @@
 
         <p class="section-title" style="margin-top:21px">地圖池</p>
         <div class="maps" id="mapPool"></div>
-        <div class="hint">10 人以上時隨機抽 10 人先發，其餘列為候補。兩隊固定各 5 人。</div>
+        <div class="hint">10 人以上時隨機抽 10 人先發，其餘列為候補。兩隊固定各 5 人。Cache 已加入地圖池；伺服器端需已安裝對應地圖才能 changelevel。</div>
 
         <div class="actions">
           <button class="primary" id="drawBtn">平均隨機分隊</button>
@@ -150,6 +158,31 @@
           <div class="notice" id="resultNotice"></div>
         </div>
       </section>
+    </div>
+  </section>
+
+  <section id="banPickView" class="view">
+    <div class="card pad">
+      <div class="leader-head">
+        <div>
+          <p class="section-title" style="margin-bottom:4px">BO1 地圖 Ban / Pick</p>
+          <div class="hint" style="margin:0">使用目前勾選的地圖池。兩隊輪流 Ban，直到剩下 1 張地圖自動成為本場地圖。</div>
+        </div>
+        <div class="sync-row">
+          <button class="secondary smallbtn" id="banStartABtn">Team A 先 Ban</button>
+          <button class="secondary smallbtn" id="banStartBBtn">Team B 先 Ban</button>
+          <button class="ghost smallbtn" id="banResetBtn">重置</button>
+        </div>
+      </div>
+      <div class="ban-status">
+        <div>
+          <div class="map-label">Ban / Pick Status</div>
+          <div id="banStatusText" style="font-weight:900;margin-top:4px">請選擇先 Ban 的隊伍</div>
+        </div>
+        <div><code id="banServerCommand">尚未決定地圖</code></div>
+      </div>
+      <div class="ban-grid" id="banGrid"></div>
+      <div class="notice" id="banNotice"></div>
     </div>
   </section>
 
@@ -187,7 +220,10 @@
       <section class="card pad">
         <div class="leader-head">
           <div><p class="section-title" style="margin-bottom:4px">玩家累積戰績</p><div class="hint" style="margin:0">同名玩家會持續累加；不保存單場明細，也不參與分隊。</div></div>
-          <button class="danger smallbtn" id="clearStatsBtn">清除全部紀錄</button>
+          <div class="sync-row">
+            <button class="secondary smallbtn" id="syncStatsBtn">同步 Google Sheet</button>
+            <button class="danger smallbtn" id="clearStatsBtn">清除本機快取</button>
+          </div>
         </div>
         <div class="leader-wrap"><table><thead><tr><th>玩家</th><th>累計場次</th><th>勝</th><th>敗</th><th>K</th><th>A</th><th>D</th><th>K/D</th><th>平均 ADR</th><th>MVP</th></tr></thead><tbody id="leaderBody"></tbody></table></div>
       </section>
@@ -198,7 +234,7 @@
 </main>
 
 <script>
-const MAPS=["de_mirage","de_inferno","de_dust2","de_nuke","de_ancient","de_anubis","de_train","de_overpass"];
+const MAPS=["de_mirage","de_inferno","de_dust2","de_nuke","de_ancient","de_anubis","de_train","de_overpass","de_cache"];
 const SHEET_API_URL="https://script.google.com/macros/s/AKfycbzfzHiscj9oyKwgui_AKQNJ9l_RQBAgBBvsCFDuY3nIsu7uclUAoVXvhpnzy-4wZvGL/exec";
 const $=s=>document.querySelector(s);
 const els={
@@ -208,9 +244,12 @@ const els={
  swapSidesBtn:$("#swapSidesBtn"),copyDiscordBtn:$("#copyDiscordBtn"),copyCommandBtn:$("#copyCommandBtn"),resultNotice:$("#resultNotice"),
  scoreA:$("#scoreA"),scoreB:$("#scoreB"),statsFile:$("#statsFile"),uploadPreview:$("#uploadPreview"),
  templateBtn:$("#templateBtn"),saveMatchBtn:$("#saveMatchBtn"),statsNotice:$("#statsNotice"),leaderBody:$("#leaderBody"),
- exportBtn:$("#exportBtn"),importBtn:$("#importBtn"),backupFile:$("#backupFile"),clearStatsBtn:$("#clearStatsBtn")
+ exportBtn:$("#exportBtn"),importBtn:$("#importBtn"),backupFile:$("#backupFile"),clearStatsBtn:$("#clearStatsBtn"),syncStatsBtn:$("#syncStatsBtn"),
+ banGrid:$("#banGrid"),banStatusText:$("#banStatusText"),banServerCommand:$("#banServerCommand"),banNotice:$("#banNotice"),
+ banStartABtn:$("#banStartABtn"),banStartBBtn:$("#banStartBBtn"),banResetBtn:$("#banResetBtn")
 };
 let state={activePool:[],teamA:[],teamB:[],subs:[],map:"",sideA:"CT",sideB:"T"};
+let banState={maps:[],banned:[],turn:null,picked:null,started:false};
 let parsedStats=[];
 
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
@@ -226,7 +265,7 @@ function init(){
  const saved=JSON.parse(localStorage.getItem("cs2_maps")||"null");
  MAPS.forEach(m=>{const l=document.createElement("label");l.className="map-option";const on=saved?saved.includes(m):true;l.innerHTML='<input type="checkbox" value="'+m+'" '+(on?"checked":"")+"><span>"+m.replace("de_","")+"</span>";els.mapPool.appendChild(l)});
  els.players.value=localStorage.getItem("cs2_players")||"";
- updateCount();migrateOldRecords();renderStats();
+ updateCount();migrateOldRecords();renderStats();resetBanPick();syncFromSheet(false);
 }
 function updateCount(){els.playerCount.textContent=parsePlayers().length;localStorage.setItem("cs2_players",els.players.value)}
 function setSide(el,side){el.textContent=side;el.className="side "+side.toLowerCase()}
@@ -249,6 +288,79 @@ function rerollMap(){const maps=selectedMaps();if(!maps.length)return notice(els
 function swapSides(){[state.sideA,state.sideB]=[state.sideB,state.sideA];renderRandom()}
 function discordText(){const x=["【CS2 內戰】","","地圖："+state.map,"","Team A ("+state.sideA+")",...state.teamA.map((p,i)=>(i+1)+". "+p),"","Team B ("+state.sideB+")",...state.teamB.map((p,i)=>(i+1)+". "+p)];if(state.subs.length)x.push("","候補",...state.subs.map((p,i)=>(i+1)+". "+p));x.push("","Server：","changelevel "+state.map);return x.join("\n")}
 async function copy(text,msg){try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove()}notice(els.resultNotice,msg)}
+
+function resetBanPick(){
+ const maps=selectedMaps();
+ banState={maps:[...maps],banned:[],turn:null,picked:null,started:false};
+ renderBanPick();
+}
+function startBanPick(team){
+ const maps=selectedMaps();
+ if(maps.length<2){notice(els.banNotice,"Ban / Pick 至少需要 2 張地圖。",true);return}
+ banState={maps:[...maps],banned:[],turn:team,picked:null,started:true};
+ renderBanPick();
+}
+function banMap(map){
+ if(!banState.started||banState.picked||banState.banned.includes(map))return;
+ const remaining=banState.maps.filter(m=>!banState.banned.includes(m));
+ if(remaining.length<=1)return;
+ banState.banned.push(map);
+ const left=banState.maps.filter(m=>!banState.banned.includes(m));
+ if(left.length===1){
+   banState.picked=left[0];
+   state.map=left[0];
+   renderBanPick();
+   if(!els.resultState.hidden)renderRandom();
+   return;
+ }
+ banState.turn=banState.turn==="A"?"B":"A";
+ renderBanPick();
+}
+function renderBanPick(){
+ const maps=banState.maps.length?banState.maps:selectedMaps();
+ els.banGrid.innerHTML=maps.map(m=>{
+   const banned=banState.banned.includes(m),picked=banState.picked===m;
+   return '<button class="ban-map '+(banned?"banned ":"")+(picked?"picked":"")+'" data-map="'+esc(m)+'" '+((banned||picked||!banState.started||!!banState.picked)?"disabled":"")+'><strong>'+esc(m.replace("de_","").toUpperCase())+'</strong><span>'+(picked?"PICKED":banned?"BANNED":"可選擇 Ban")+'</span></button>'
+ }).join("");
+ els.banGrid.querySelectorAll(".ban-map").forEach(b=>b.addEventListener("click",()=>banMap(b.dataset.map)));
+ if(banState.picked){
+   els.banStatusText.innerHTML='最終地圖：<span style="color:var(--accent)">'+esc(banState.picked)+'</span>';
+   els.banServerCommand.textContent="changelevel "+banState.picked;
+ }else if(banState.started){
+   els.banStatusText.innerHTML='輪到 <span class="'+(banState.turn==="A"?"turn-a":"turn-b")+'">Team '+banState.turn+'</span> Ban';
+   els.banServerCommand.textContent="尚未決定地圖";
+ }else{
+   els.banStatusText.textContent="請選擇先 Ban 的隊伍";
+   els.banServerCommand.textContent="尚未決定地圖";
+ }
+}
+
+async function syncFromSheet(showNotice=true){
+ if(showNotice){els.syncStatsBtn.disabled=true;els.syncStatsBtn.textContent="同步中..."}
+ try{
+   const res=await fetch(SHEET_API_URL+"?action=players&t="+Date.now(),{method:"GET",cache:"no-store"});
+   const text=await res.text();
+   let data={};try{data=JSON.parse(text)}catch{}
+   if(!res.ok||data.success===false||!Array.isArray(data.players))throw new Error(data.error||"Google Apps Script 尚未提供讀取 API");
+   const t={};
+   data.players.forEach(p=>{
+     const name=String(p.name||p.player||"").trim();if(!name)return;
+     t[name.toLowerCase()]={
+       name,
+       matches:num(p.matches),wins:num(p.wins),losses:num(p.losses),kills:num(p.kills),assists:num(p.assists),deaths:num(p.deaths),
+       adrSum:num(p.adrSum??p.adr_sum),adrN:num(p.adrN??p.adr_count),mvp:num(p.mvp)
+     };
+   });
+   saveTotals(t);renderStats();
+   if(showNotice)notice(els.statsNotice,"已從 Google Sheet 同步最新戰績。");
+   return true;
+ }catch(err){
+   if(showNotice)notice(els.statsNotice,"同步失敗："+err.message,true);
+   return false;
+ }finally{
+   if(showNotice){els.syncStatsBtn.disabled=false;els.syncStatsBtn.textContent="同步 Google Sheet"}
+ }
+}
 
 function parseCSV(text){
  const rows=[];let row=[],cell="",q=false;
@@ -339,7 +451,8 @@ async function saveMatch(){
    els.statsFile.value="";
    previewStats();
    renderStats();
-   notice(els.statsNotice,"已寫入 Google Sheet，並同步更新本機排行。");
+   notice(els.statsNotice,"已寫入 Google Sheet。");
+   syncFromSheet(false);
  }catch(err){
    notice(els.statsNotice,"寫入失敗："+err.message,true);
  }finally{
@@ -356,13 +469,19 @@ function exportBackup(){download("cs2-player-totals-"+new Date().toISOString().s
 function template(){download("cs2-stats-template.csv","player,team,kills,assists,deaths,adr,mvp\nHeng,A,20,5,14,88.4,3\nJack,B,16,4,18,72.1,1\n","text/csv;charset=utf-8")}
 
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("#"+b.dataset.view).classList.add("active")}));
-els.players.addEventListener("input",updateCount);els.drawBtn.addEventListener("click",drawAll);els.rerollTeamsBtn.addEventListener("click",rerollTeams);els.rerollMapBtn.addEventListener("click",rerollMap);els.swapSidesBtn.addEventListener("click",swapSides);
+els.players.addEventListener("input",updateCount);
+els.mapPool.addEventListener("change",()=>{localStorage.setItem("cs2_maps",JSON.stringify(selectedMaps()));resetBanPick()});
+els.drawBtn.addEventListener("click",drawAll);els.rerollTeamsBtn.addEventListener("click",rerollTeams);els.rerollMapBtn.addEventListener("click",rerollMap);els.swapSidesBtn.addEventListener("click",swapSides);
 els.copyDiscordBtn.addEventListener("click",()=>copy(discordText(),"Discord 格式已複製。"));els.copyCommandBtn.addEventListener("click",()=>copy(els.serverCommand.textContent,"Server 指令已複製。"));
 els.clearBtn.addEventListener("click",()=>{els.players.value="";updateCount();els.emptyState.hidden=false;els.resultState.hidden=true;notice(els.formNotice,"名單已清空。")});
 els.statsFile.addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{parsedStats=convertStats(parseCSV(await f.text()));previewStats();notice(els.statsNotice,"已讀取 "+parsedStats.length+" 位玩家。")}catch(err){parsedStats=[];previewStats();notice(els.statsNotice,err.message,true)}});
 els.saveMatchBtn.addEventListener("click",saveMatch);els.templateBtn.addEventListener("click",template);els.exportBtn.addEventListener("click",exportBackup);els.importBtn.addEventListener("click",()=>els.backupFile.click());
 els.backupFile.addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{const x=JSON.parse(await f.text());if(!x||Array.isArray(x)||typeof x!=="object")throw new Error();saveTotals(x);renderStats();notice(els.statsNotice,"玩家總戰績備份已匯入。")}catch{notice(els.statsNotice,"備份檔格式不正確。",true)}});
-els.clearStatsBtn.addEventListener("click",()=>{if(confirm("確定清除全部玩家累積戰績？此動作無法復原。")){saveTotals({});renderStats()}});
+els.clearStatsBtn.addEventListener("click",()=>{if(confirm("只清除這台裝置的本機戰績快取？Google Sheet 內容不會刪除。")){saveTotals({});renderStats()}});
+els.syncStatsBtn.addEventListener("click",()=>syncFromSheet(true));
+els.banStartABtn.addEventListener("click",()=>startBanPick("A"));
+els.banStartBBtn.addEventListener("click",()=>startBanPick("B"));
+els.banResetBtn.addEventListener("click",resetBanPick);
 init();
 </script>
 </body>
