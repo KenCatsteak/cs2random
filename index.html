@@ -166,22 +166,31 @@
       <div class="leader-head">
         <div>
           <p class="section-title" style="margin-bottom:4px">BO1 地圖 Ban / Pick</p>
-          <div class="hint" style="margin:0">使用目前勾選的地圖池。兩隊輪流 Ban，直到剩下 1 張地圖自動成為本場地圖。</div>
+          <div class="hint" style="margin:0">固定流程：Team A 先 Ban 2 張 → Team B Ban 3 張 → Team A 從剩餘地圖中 Pick 1 張 → Team B 選 CT 或 T。</div>
         </div>
         <div class="sync-row">
-          <button class="secondary smallbtn" id="banStartABtn">Team A 先 Ban</button>
-          <button class="secondary smallbtn" id="banStartBBtn">Team B 先 Ban</button>
+          <button class="secondary smallbtn" id="banStartBtn">開始 Ban / Pick</button>
           <button class="ghost smallbtn" id="banResetBtn">重置</button>
         </div>
       </div>
       <div class="ban-status">
         <div>
           <div class="map-label">Ban / Pick Status</div>
-          <div id="banStatusText" style="font-weight:900;margin-top:4px">請選擇先 Ban 的隊伍</div>
+          <div id="banStatusText" style="font-weight:900;margin-top:4px">尚未開始</div>
         </div>
         <div><code id="banServerCommand">尚未決定地圖</code></div>
       </div>
       <div class="ban-grid" id="banGrid"></div>
+      <div id="sideChoiceBox" class="ban-status" style="margin-top:14px;display:none">
+        <div>
+          <div class="map-label">Team B Side Choice</div>
+          <div style="font-weight:900;margin-top:4px">Team B 選擇開局陣營</div>
+        </div>
+        <div class="sync-row">
+          <button class="secondary smallbtn" id="chooseCtBtn">Team B 選 CT</button>
+          <button class="secondary smallbtn" id="chooseTBtn">Team B 選 T</button>
+        </div>
+      </div>
       <div class="notice" id="banNotice"></div>
     </div>
   </section>
@@ -246,10 +255,11 @@ const els={
  templateBtn:$("#templateBtn"),saveMatchBtn:$("#saveMatchBtn"),statsNotice:$("#statsNotice"),leaderBody:$("#leaderBody"),
  exportBtn:$("#exportBtn"),importBtn:$("#importBtn"),backupFile:$("#backupFile"),clearStatsBtn:$("#clearStatsBtn"),syncStatsBtn:$("#syncStatsBtn"),
  banGrid:$("#banGrid"),banStatusText:$("#banStatusText"),banServerCommand:$("#banServerCommand"),banNotice:$("#banNotice"),
- banStartABtn:$("#banStartABtn"),banStartBBtn:$("#banStartBBtn"),banResetBtn:$("#banResetBtn")
+ banStartBtn:$("#banStartBtn"),banResetBtn:$("#banResetBtn"),sideChoiceBox:$("#sideChoiceBox"),
+ chooseCtBtn:$("#chooseCtBtn"),chooseTBtn:$("#chooseTBtn")
 };
 let state={activePool:[],teamA:[],teamB:[],subs:[],map:"",sideA:"CT",sideB:"T"};
-let banState={maps:[],banned:[],turn:null,picked:null,started:false};
+let banState={maps:[],bannedA:[],bannedB:[],phase:"idle",picked:null,bSide:null,started:false};
 let parsedStats=[];
 
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
@@ -291,46 +301,80 @@ async function copy(text,msg){try{await navigator.clipboard.writeText(text)}catc
 
 function resetBanPick(){
  const maps=selectedMaps();
- banState={maps:[...maps],banned:[],turn:null,picked:null,started:false};
+ banState={maps:[...maps],bannedA:[],bannedB:[],phase:"idle",picked:null,bSide:null,started:false};
  renderBanPick();
 }
-function startBanPick(team){
+function startBanPick(){
  const maps=selectedMaps();
- if(maps.length<2){notice(els.banNotice,"Ban / Pick 至少需要 2 張地圖。",true);return}
- banState={maps:[...maps],banned:[],turn:team,picked:null,started:true};
+ if(maps.length<6){notice(els.banNotice,"此流程至少需要 6 張地圖。",true);return}
+ banState={maps:[...maps],bannedA:[],bannedB:[],phase:"A_BAN",picked:null,bSide:null,started:true};
  renderBanPick();
 }
-function banMap(map){
- if(!banState.started||banState.picked||banState.banned.includes(map))return;
- const remaining=banState.maps.filter(m=>!banState.banned.includes(m));
- if(remaining.length<=1)return;
- banState.banned.push(map);
- const left=banState.maps.filter(m=>!banState.banned.includes(m));
- if(left.length===1){
-   banState.picked=left[0];
-   state.map=left[0];
-   renderBanPick();
-   if(!els.resultState.hidden)renderRandom();
-   return;
+function allBanned(){
+ return [...banState.bannedA,...banState.bannedB];
+}
+function handleMapAction(map){
+ if(!banState.started||banState.picked&&banState.phase!=="SIDE")return;
+ if(allBanned().includes(map))return;
+
+ if(banState.phase==="A_BAN"){
+   banState.bannedA.push(map);
+   if(banState.bannedA.length>=2)banState.phase="B_BAN";
+ }else if(banState.phase==="B_BAN"){
+   banState.bannedB.push(map);
+   if(banState.bannedB.length>=3)banState.phase="A_PICK";
+ }else if(banState.phase==="A_PICK"){
+   banState.picked=map;
+   banState.phase="SIDE";
+   state.map=map;
  }
- banState.turn=banState.turn==="A"?"B":"A";
  renderBanPick();
+ if(banState.picked&&!els.resultState.hidden)renderRandom();
+}
+function chooseBSide(side){
+ if(banState.phase!=="SIDE"||!banState.picked)return;
+ banState.bSide=side;
+ banState.phase="DONE";
+ if(side==="CT"){state.sideB="CT";state.sideA="T"}else{state.sideB="T";state.sideA="CT"}
+ renderBanPick();
+ if(!els.resultState.hidden)renderRandom();
 }
 function renderBanPick(){
  const maps=banState.maps.length?banState.maps:selectedMaps();
+ const banned=allBanned();
  els.banGrid.innerHTML=maps.map(m=>{
-   const banned=banState.banned.includes(m),picked=banState.picked===m;
-   return '<button class="ban-map '+(banned?"banned ":"")+(picked?"picked":"")+'" data-map="'+esc(m)+'" '+((banned||picked||!banState.started||!!banState.picked)?"disabled":"")+'><strong>'+esc(m.replace("de_","").toUpperCase())+'</strong><span>'+(picked?"PICKED":banned?"BANNED":"可選擇 Ban")+'</span></button>'
+   const isA=banState.bannedA.includes(m),isB=banState.bannedB.includes(m),picked=banState.picked===m;
+   const disabled=!banState.started||banState.phase==="SIDE"||banState.phase==="DONE"||isA||isB;
+   let label="可選擇";
+   if(isA)label="Team A BANNED";
+   else if(isB)label="Team B BANNED";
+   else if(picked)label="PICKED BY A";
+   else if(banState.phase==="A_BAN")label="Team A Ban";
+   else if(banState.phase==="B_BAN")label="Team B Ban";
+   else if(banState.phase==="A_PICK")label="Team A Pick";
+   return '<button class="ban-map '+((isA||isB)?"banned ":"")+(picked?"picked":"")+'" data-map="'+esc(m)+'" '+(disabled?"disabled":"")+'><strong>'+esc(m.replace("de_","").toUpperCase())+'</strong><span>'+label+'</span></button>'
  }).join("");
- els.banGrid.querySelectorAll(".ban-map").forEach(b=>b.addEventListener("click",()=>banMap(b.dataset.map)));
- if(banState.picked){
-   els.banStatusText.innerHTML='最終地圖：<span style="color:var(--accent)">'+esc(banState.picked)+'</span>';
+ els.banGrid.querySelectorAll(".ban-map").forEach(b=>b.addEventListener("click",()=>handleMapAction(b.dataset.map)));
+
+ els.sideChoiceBox.style.display=banState.phase==="SIDE"?"flex":"none";
+
+ if(banState.phase==="A_BAN"){
+   els.banStatusText.innerHTML='Team A Ban：<span class="turn-a">'+banState.bannedA.length+' / 2</span>';
+   els.banServerCommand.textContent="等待地圖選擇";
+ }else if(banState.phase==="B_BAN"){
+   els.banStatusText.innerHTML='Team B Ban：<span class="turn-b">'+banState.bannedB.length+' / 3</span>';
+   els.banServerCommand.textContent="等待地圖選擇";
+ }else if(banState.phase==="A_PICK"){
+   els.banStatusText.innerHTML='Team A 從剩餘地圖中 <span style="color:var(--accent)">Pick 1 張</span>';
+   els.banServerCommand.textContent="等待地圖選擇";
+ }else if(banState.phase==="SIDE"){
+   els.banStatusText.innerHTML='地圖：<span style="color:var(--accent)">'+esc(banState.picked)+'</span> · 等待 Team B 選 CT / T';
    els.banServerCommand.textContent="changelevel "+banState.picked;
- }else if(banState.started){
-   els.banStatusText.innerHTML='輪到 <span class="'+(banState.turn==="A"?"turn-a":"turn-b")+'">Team '+banState.turn+'</span> Ban';
-   els.banServerCommand.textContent="尚未決定地圖";
+ }else if(banState.phase==="DONE"){
+   els.banStatusText.innerHTML='地圖：<span style="color:var(--accent)">'+esc(banState.picked)+'</span> · Team A '+state.sideA+' / Team B '+state.sideB;
+   els.banServerCommand.textContent="changelevel "+banState.picked;
  }else{
-   els.banStatusText.textContent="請選擇先 Ban 的隊伍";
+   els.banStatusText.textContent="尚未開始";
    els.banServerCommand.textContent="尚未決定地圖";
  }
 }
@@ -479,9 +523,10 @@ els.saveMatchBtn.addEventListener("click",saveMatch);els.templateBtn.addEventLis
 els.backupFile.addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{const x=JSON.parse(await f.text());if(!x||Array.isArray(x)||typeof x!=="object")throw new Error();saveTotals(x);renderStats();notice(els.statsNotice,"玩家總戰績備份已匯入。")}catch{notice(els.statsNotice,"備份檔格式不正確。",true)}});
 els.clearStatsBtn.addEventListener("click",()=>{if(confirm("只清除這台裝置的本機戰績快取？Google Sheet 內容不會刪除。")){saveTotals({});renderStats()}});
 els.syncStatsBtn.addEventListener("click",()=>syncFromSheet(true));
-els.banStartABtn.addEventListener("click",()=>startBanPick("A"));
-els.banStartBBtn.addEventListener("click",()=>startBanPick("B"));
+els.banStartBtn.addEventListener("click",startBanPick);
 els.banResetBtn.addEventListener("click",resetBanPick);
+els.chooseCtBtn.addEventListener("click",()=>chooseBSide("CT"));
+els.chooseTBtn.addEventListener("click",()=>chooseBSide("T"));
 init();
 </script>
 </body>
