@@ -156,13 +156,12 @@
   <section id="statsView" class="view">
     <div class="stats-layout">
       <aside class="card pad">
-        <p class="section-title">新增賽事紀錄</p>
+        <p class="section-title">累加玩家戰績</p>
         <div class="form-grid">
-          <div class="field"><label>日期</label><input id="matchDate" type="date"></div>
-          <div class="field"><label>地圖</label><select id="matchMap"></select></div>
           <div class="field"><label>Team A 分數</label><input id="scoreA" type="number" min="0" max="99" value="13"></div>
           <div class="field"><label>Team B 分數</label><input id="scoreB" type="number" min="0" max="99" value="10"></div>
         </div>
+        <div class="hint">每次上傳只會把數值累加到玩家個人總表，不保存單場紀錄。比分只用來判斷本次上傳玩家的勝 / 敗。</div>
 
         <div class="upload">
           <div style="font-weight:800;margin-bottom:6px">上傳玩家戰績 CSV</div>
@@ -172,7 +171,7 @@
         </div>
 
         <div id="uploadPreview" class="preview" hidden></div>
-        <button class="primary" id="saveMatchBtn" style="width:100%;margin-top:14px" disabled>儲存本場戰績</button>
+        <button class="primary" id="saveMatchBtn" style="width:100%;margin-top:14px" disabled>累加到玩家總戰績</button>
         <div class="notice" id="statsNotice"></div>
 
         <div style="border-top:1px solid var(--line);margin:20px 0 14px"></div>
@@ -187,18 +186,15 @@
 
       <section class="card pad">
         <div class="leader-head">
-          <div><p class="section-title" style="margin-bottom:4px">玩家總排行</p><div class="hint" style="margin:0">僅彙整已上傳並儲存的戰績，不參與分隊。</div></div>
+          <div><p class="section-title" style="margin-bottom:4px">玩家累積戰績</p><div class="hint" style="margin:0">同名玩家會持續累加；不保存單場明細，也不參與分隊。</div></div>
           <button class="danger smallbtn" id="clearStatsBtn">清除全部紀錄</button>
         </div>
-        <div class="leader-wrap"><table><thead><tr><th>玩家</th><th>場次</th><th>勝</th><th>敗</th><th>K</th><th>D</th><th>K/D</th><th>平均 ADR</th><th>MVP</th></tr></thead><tbody id="leaderBody"></tbody></table></div>
-
-        <p class="section-title" style="margin-top:22px">近期賽事</p>
-        <div id="matchHistory" class="history"></div>
+        <div class="leader-wrap"><table><thead><tr><th>玩家</th><th>累計場次</th><th>勝</th><th>敗</th><th>K</th><th>A</th><th>D</th><th>K/D</th><th>平均 ADR</th><th>MVP</th></tr></thead><tbody id="leaderBody"></tbody></table></div>
       </section>
     </div>
   </section>
 
-  <footer>分隊採純隨機平均人數，不使用戰績或實力做平衡。戰績資料預設僅存在你的瀏覽器。</footer>
+  <footer>分隊採純隨機平均人數，不使用戰績或實力做平衡。戰績採玩家累積制，預設僅存在你的瀏覽器。</footer>
 </main>
 
 <script>
@@ -209,8 +205,8 @@ const els={
  emptyState:$("#emptyState"),resultState:$("#resultState"),selectedMap:$("#selectedMap"),sideA:$("#sideA"),sideB:$("#sideB"),teamA:$("#teamA"),teamB:$("#teamB"),
  subsBox:$("#subsBox"),subsList:$("#subsList"),serverCommand:$("#serverCommand"),rerollMapBtn:$("#rerollMapBtn"),rerollTeamsBtn:$("#rerollTeamsBtn"),
  swapSidesBtn:$("#swapSidesBtn"),copyDiscordBtn:$("#copyDiscordBtn"),copyCommandBtn:$("#copyCommandBtn"),resultNotice:$("#resultNotice"),
- matchDate:$("#matchDate"),matchMap:$("#matchMap"),scoreA:$("#scoreA"),scoreB:$("#scoreB"),statsFile:$("#statsFile"),uploadPreview:$("#uploadPreview"),
- templateBtn:$("#templateBtn"),saveMatchBtn:$("#saveMatchBtn"),statsNotice:$("#statsNotice"),leaderBody:$("#leaderBody"),matchHistory:$("#matchHistory"),
+ scoreA:$("#scoreA"),scoreB:$("#scoreB"),statsFile:$("#statsFile"),uploadPreview:$("#uploadPreview"),
+ templateBtn:$("#templateBtn"),saveMatchBtn:$("#saveMatchBtn"),statsNotice:$("#statsNotice"),leaderBody:$("#leaderBody"),
  exportBtn:$("#exportBtn"),importBtn:$("#importBtn"),backupFile:$("#backupFile"),clearStatsBtn:$("#clearStatsBtn")
 };
 let state={activePool:[],teamA:[],teamB:[],subs:[],map:"",sideA:"CT",sideB:"T"};
@@ -229,9 +225,7 @@ function init(){
  const saved=JSON.parse(localStorage.getItem("cs2_maps")||"null");
  MAPS.forEach(m=>{const l=document.createElement("label");l.className="map-option";const on=saved?saved.includes(m):true;l.innerHTML='<input type="checkbox" value="'+m+'" '+(on?"checked":"")+"><span>"+m.replace("de_","")+"</span>";els.mapPool.appendChild(l)});
  els.players.value=localStorage.getItem("cs2_players")||"";
- MAPS.forEach(m=>els.matchMap.insertAdjacentHTML("beforeend",'<option value="'+m+'">'+m+"</option>"));
- els.matchDate.value=new Date().toISOString().slice(0,10);
- updateCount();renderStats();
+ updateCount();migrateOldRecords();renderStats();
 }
 function updateCount(){els.playerCount.textContent=parsePlayers().length;localStorage.setItem("cs2_players",els.players.value)}
 function setSide(el,side){el.textContent=side;el.className="side "+side.toLowerCase()}
@@ -287,35 +281,45 @@ function previewStats(){
  els.uploadPreview.innerHTML='<table><thead><tr><th>玩家</th><th>隊伍</th><th>K</th><th>A</th><th>D</th><th>ADR</th><th>MVP</th></tr></thead><tbody>'+
  parsedStats.map(p=>'<tr><td>'+esc(p.player)+'</td><td>'+esc(p.team||"-")+'</td><td>'+p.kills+'</td><td>'+p.assists+'</td><td>'+p.deaths+'</td><td>'+p.adr+'</td><td>'+p.mvp+'</td></tr>').join("")+"</tbody></table>"
 }
-function records(){return JSON.parse(localStorage.getItem("cs2_records")||"[]")}
-function saveRecords(r){localStorage.setItem("cs2_records",JSON.stringify(r))}
+function totals(){return JSON.parse(localStorage.getItem("cs2_player_totals")||"{}")}
+function saveTotals(x){localStorage.setItem("cs2_player_totals",JSON.stringify(x))}
 function teamKey(v){
  const s=norm(v);if(["a","teama","1","ct"].includes(s))return "A";if(["b","teamb","2","t"].includes(s))return "B";return ""
 }
+function migrateOldRecords(){
+ if(localStorage.getItem("cs2_player_totals"))return;
+ const old=JSON.parse(localStorage.getItem("cs2_records")||"[]");
+ if(!Array.isArray(old)||!old.length)return;
+ const t={};
+ old.forEach(m=>m.players?.forEach(p=>accumulatePlayer(t,p,m.scoreA,m.scoreB)));
+ saveTotals(t);
+}
+function accumulatePlayer(t,p,scoreA,scoreB){
+ const key=p.player.trim().toLowerCase();
+ if(!t[key])t[key]={name:p.player,matches:0,wins:0,losses:0,kills:0,assists:0,deaths:0,adrSum:0,adrN:0,mvp:0};
+ const x=t[key];
+ x.name=p.player;x.matches++;x.kills+=num(p.kills);x.assists+=num(p.assists);x.deaths+=num(p.deaths);x.mvp+=num(p.mvp);
+ if(num(p.adr)>0){x.adrSum+=num(p.adr);x.adrN++}
+ const team=teamKey(p.team);
+ if(team&&scoreA!==scoreB){
+   const won=team==="A"?scoreA>scoreB:scoreB>scoreA;
+   if(won)x.wins++;else x.losses++;
+ }
+}
 function saveMatch(){
  if(!parsedStats.length)return;
- const a=num(els.scoreA.value),b=num(els.scoreB.value);
- const rec={id:Date.now(),date:els.matchDate.value||new Date().toISOString().slice(0,10),map:els.matchMap.value,scoreA:a,scoreB:b,players:parsedStats};
- const r=records();r.unshift(rec);saveRecords(r);parsedStats=[];els.statsFile.value="";previewStats();renderStats();notice(els.statsNotice,"本場戰績已儲存。")
-}
-function aggregate(){
- const agg={};
- records().forEach(m=>m.players.forEach(p=>{
-  const k=p.player.trim().toLowerCase();if(!agg[k])agg[k]={name:p.player,matches:0,wins:0,losses:0,kills:0,deaths:0,adrSum:0,adrN:0,mvp:0};
-  const x=agg[k];x.matches++;x.kills+=p.kills;x.deaths+=p.deaths;x.mvp+=p.mvp;if(p.adr>0){x.adrSum+=p.adr;x.adrN++}
-  const t=teamKey(p.team);if(t){const won=t==="A"?m.scoreA>m.scoreB:m.scoreB>m.scoreA;if(m.scoreA!==m.scoreB){if(won)x.wins++;else x.losses++}}
- }));
- return Object.values(agg).sort((a,b)=>(b.kills-b.deaths)-(a.kills-a.deaths)||b.kills-a.kills)
+ const a=num(els.scoreA.value),b=num(els.scoreB.value),t=totals();
+ parsedStats.forEach(p=>accumulatePlayer(t,p,a,b));
+ saveTotals(t);
+ parsedStats=[];els.statsFile.value="";previewStats();renderStats();
+ notice(els.statsNotice,"已累加到玩家總戰績。")
 }
 function renderStats(){
- const a=aggregate();
- els.leaderBody.innerHTML=a.length?a.map(x=>'<tr><td><strong>'+esc(x.name)+'</strong></td><td>'+x.matches+'</td><td>'+x.wins+'</td><td>'+x.losses+'</td><td>'+x.kills+'</td><td>'+x.deaths+'</td><td>'+(x.deaths?(x.kills/x.deaths).toFixed(2):x.kills.toFixed(2))+'</td><td>'+(x.adrN?(x.adrSum/x.adrN).toFixed(1):"-")+'</td><td>'+x.mvp+'</td></tr>').join(""):'<tr><td colspan="9" style="color:#64748b;text-align:center;padding:24px">尚無戰績紀錄</td></tr>';
- const r=records();
- els.matchHistory.innerHTML=r.length?r.map(m=>'<div class="match-card"><div class="match-top"><div><div class="scoreline">Team A '+m.scoreA+' : '+m.scoreB+' Team B</div><div class="match-meta">'+esc(m.date)+' · '+esc(m.map)+' · '+m.players.length+' 位玩家</div></div><button class="danger smallbtn" onclick="deleteMatch('+m.id+')">刪除</button></div></div>').join(""):'<div class="hint">尚未儲存任何比賽。</div>'
+ const a=Object.values(totals()).sort((x,y)=>y.kills-x.kills||((y.kills/(y.deaths||1))-(x.kills/(x.deaths||1))));
+ els.leaderBody.innerHTML=a.length?a.map(x=>'<tr><td><strong>'+esc(x.name)+'</strong></td><td>'+x.matches+'</td><td>'+x.wins+'</td><td>'+x.losses+'</td><td>'+x.kills+'</td><td>'+x.assists+'</td><td>'+x.deaths+'</td><td>'+(x.deaths?(x.kills/x.deaths).toFixed(2):x.kills.toFixed(2))+'</td><td>'+(x.adrN?(x.adrSum/x.adrN).toFixed(1):"-")+'</td><td>'+x.mvp+'</td></tr>').join(""):'<tr><td colspan="10" style="color:#64748b;text-align:center;padding:24px">尚無玩家戰績</td></tr>';
 }
-window.deleteMatch=id=>{if(!confirm("確定刪除這場紀錄？"))return;saveRecords(records().filter(x=>x.id!==id));renderStats()}
 function download(name,text,type){const b=new Blob([text],{type}),u=URL.createObjectURL(b),a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u)}
-function exportBackup(){download("cs2-inhouse-records-"+new Date().toISOString().slice(0,10)+".json",JSON.stringify(records(),null,2),"application/json")}
+function exportBackup(){download("cs2-player-totals-"+new Date().toISOString().slice(0,10)+".json",JSON.stringify(totals(),null,2),"application/json")}
 function template(){download("cs2-stats-template.csv","player,team,kills,assists,deaths,adr,mvp\nHeng,A,20,5,14,88.4,3\nJack,B,16,4,18,72.1,1\n","text/csv;charset=utf-8")}
 
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("#"+b.dataset.view).classList.add("active")}));
@@ -324,8 +328,8 @@ els.copyDiscordBtn.addEventListener("click",()=>copy(discordText(),"Discord 格�
 els.clearBtn.addEventListener("click",()=>{els.players.value="";updateCount();els.emptyState.hidden=false;els.resultState.hidden=true;notice(els.formNotice,"名單已清空。")});
 els.statsFile.addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{parsedStats=convertStats(parseCSV(await f.text()));previewStats();notice(els.statsNotice,"已讀取 "+parsedStats.length+" 位玩家。")}catch(err){parsedStats=[];previewStats();notice(els.statsNotice,err.message,true)}});
 els.saveMatchBtn.addEventListener("click",saveMatch);els.templateBtn.addEventListener("click",template);els.exportBtn.addEventListener("click",exportBackup);els.importBtn.addEventListener("click",()=>els.backupFile.click());
-els.backupFile.addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{const x=JSON.parse(await f.text());if(!Array.isArray(x))throw new Error();saveRecords(x);renderStats();notice(els.statsNotice,"備份已匯入。")}catch{notice(els.statsNotice,"備份檔格式不正確。",true)}});
-els.clearStatsBtn.addEventListener("click",()=>{if(confirm("確定清除全部戰績紀錄？此動作無法復原。")){saveRecords([]);renderStats()}});
+els.backupFile.addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{const x=JSON.parse(await f.text());if(!x||Array.isArray(x)||typeof x!=="object")throw new Error();saveTotals(x);renderStats();notice(els.statsNotice,"玩家總戰績備份已匯入。")}catch{notice(els.statsNotice,"備份檔格式不正確。",true)}});
+els.clearStatsBtn.addEventListener("click",()=>{if(confirm("確定清除全部玩家累積戰績？此動作無法復原。")){saveTotals({});renderStats()}});
 init();
 </script>
 </body>
